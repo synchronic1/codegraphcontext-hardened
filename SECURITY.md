@@ -1,67 +1,117 @@
-# 🛡️ Security Policy
+# Security Policy
 
-## 📌 Supported Versions
+## Hardened Version
 
-We aim to keep `CodeGraphContext` up to date and secure. Please see below for the versions we currently support with security updates.
+This is a **hardened fork** of CodeGraphContext with additional security measures.
 
-| Version | Supported          |
-|---------|--------------------|
-| Latest  | ✅ Yes              |
-| Older   | ❌ No               |
+### Security Enhancements
+
+#### Path Traversal Protection
+
+The `add_code_to_graph` tool now validates paths to prevent:
+- Indexing of sensitive files (`.ssh`, `.env`, credentials, etc.)
+- Path traversal outside allowed directories
+- Symlink escape attacks
+
+**Configuration:**
+```bash
+# Allow specific directories (colon-separated)
+export CGC_ALLOWED_ROOTS="/home/user/projects:/home/user/workspace"
+
+# Default: current working directory only
+```
+
+**Blocked patterns:**
+- `.ssh`, `.gnupg`, `.aws`, `.kube` (credentials)
+- `.env`, `.envrc`, `credentials`, `secrets`
+- `*.pem`, `*.key`, `id_rsa`, `id_ed25519`
+- `/etc/shadow`, `/etc/passwd`
+
+#### Cypher Query Sanitization
+
+The `execute_cypher_query` tool now:
+- Validates query prefix (MATCH, WITH, RETURN only)
+- Blocks write operations (CREATE, MERGE, DELETE, etc.)
+- Supports parameterized queries
+- Normalizes Unicode to prevent bypass
+
+**Parameterized queries (recommended):**
+```python
+# Instead of string interpolation
+query = "MATCH (n) WHERE n.name = $name RETURN n"
+params = {"name": user_input}
+result = execute_cypher_query(db, cypher_query=query, params=params)
+```
+
+## Reporting Security Issues
+
+For security issues in this hardened fork, open an issue with the `security` label.
+
+For upstream CodeGraphContext security issues, see:
+https://github.com/CodeGraphContext/CodeGraphContext/security
+
+## Security Audit
+
+Full security audit: `memory/research/codegraphcontext-security-audit.md`
+
+### Audit Summary (2026-04-08)
+
+| Severity | Count | Key Findings |
+|----------|-------|--------------|
+| Critical | 0 | — |
+| High | 0 | — |
+| Medium | 2 | Cypher injection, path traversal (both mitigated) |
+| Low | 3 | Credential storage, no auth, bundle injection |
+
+**Verdict:** Safe for local use with trusted codebases.
 
 ---
 
-## 📬 Reporting a Vulnerability
-
-If you discover a security vulnerability, **please do not open an issue** on GitHub.
-
-Instead, follow these steps:
-
-1. **Email the maintainer directly**
-2. Include the following details:
-   - Description of the vulnerability
-   - Steps to reproduce (if possible)
-   - Potential impact
-   - Any mitigation or workaround suggestions
-
-⌛ We aim to respond to security reports **within 72 hours**.
+Original upstream security policy follows below.
 
 ---
 
-## 🚫 Responsible Disclosure Guidelines
+# Upstream Security Policy
 
-We ask that you:
-- Do not publicly disclose the issue until it has been resolved.
-- Avoid testing vulnerabilities in a way that could disrupt services.
-- Act in good faith and with respect for user data and privacy.
+## Reporting a Vulnerability
 
----
+We take security seriously. If you discover a security vulnerability, please report it responsibly.
 
-## 📃 Disclosure Policy
+**DO NOT** create a public GitHub issue for security vulnerabilities.
 
-- We follow a **coordinated disclosure** approach.
-- We appreciate responsible reporting and will publicly disclose the issue only **after a fix has been released**.
+Instead, please:
 
---- 
+1. Email your findings to security@codegraphcontext.dev
+2. Include a detailed description of the vulnerability
+3. Provide steps to reproduce if possible
+4. Allow us 90 days to respond before public disclosure
 
-## ✅ Security Best Practices
+## Supported Versions
 
-While using this project, we recommend you:
+We provide security updates for the latest major version only.
 
-- Always run software in a secure and isolated environment.
-- Keep your dependencies up to date.
-- Avoid sharing sensitive API keys or credentials in `.env` or other public files.
+## Security Considerations
 
----
+### MCP Server Security
 
-## 🙏 Acknowledgments
+- The MCP server listens on stdin/stdout only (no network exposure)
+- No authentication is required (local process communication)
+- Only run the MCP server from trusted parent processes
 
-We value the contributions from the community and encourage responsible disclosure to help keep `CodeGraphContext` safe and secure for all users.
+### Database Credentials
 
----
+- Credentials are stored in environment variables or `.env` files
+- Never commit credentials to version control
+- Use environment-specific credential files
 
-## 🔒 Resources
+### File System Access
 
-- [GitHub Security Advisories](https://docs.github.com/en/code-security/security-advisories)
-- [OpenSSF Best Practices](https://bestpractices.dev/)
-- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- The indexer can read any file the process has access to
+- Only index trusted codebases
+- Consider running in a container for untrusted code
+
+### Cypher Queries
+
+- The `execute_cypher_query` tool is restricted to read-only operations
+- Write operations (CREATE, MERGE, DELETE) are blocked
+- Custom deployments may need additional restrictions

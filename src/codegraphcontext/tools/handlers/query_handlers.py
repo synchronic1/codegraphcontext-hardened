@@ -7,39 +7,39 @@ from datetime import datetime
 from typing import Any, Dict
 from neo4j.exceptions import CypherSyntaxError
 from ...utils.debug_log import debug_log
+from ...security import sanitize_cypher_query
 
 def execute_cypher_query(db_manager, **args) -> Dict[str, Any]:
     """
     Tool implementation for executing a read-only Cypher query.
     
-    Important: Includes a safety check to prevent any database modification
-    by disallowing keywords like CREATE, MERGE, DELETE, etc.
+    Security: Uses sanitize_cypher_query to validate query is read-only.
+    Supports parameterized queries via 'params' argument.
     """
     cypher_query = args.get("cypher_query")
+    params = args.get("params")  # Optional parameterized values
+    
     if not cypher_query:
         return {"error": "Cypher query cannot be empty."}
 
-    # Safety Check: Prevent any write operations to the database.
-    # This check first removes all string literals and then checks for forbidden keywords.
-    forbidden_keywords = ['CREATE', 'MERGE', 'DELETE', 'SET', 'REMOVE', 'DROP', 'CALL apoc']
+    # Security: Sanitize query to ensure it's read-only
+    is_safe, result_or_error, validated_params = sanitize_cypher_query(cypher_query, params)
     
-    # Regex to match single or double quoted strings, handling escaped quotes.
-    string_literal_pattern = r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\''
+    if not is_safe:
+        debug_log(f"Query rejected: {result_or_error}")
+        return {"error": result_or_error}
     
-    # Remove all string literals from the query.
-    query_without_strings = re.sub(string_literal_pattern, '', cypher_query)
-    
-    # Now, check for forbidden keywords in the query without strings.
-    for keyword in forbidden_keywords:
-        if re.search(r'\b' + keyword + r'\b', query_without_strings, re.IGNORECASE):
-            return {
-                "error": "This tool only supports read-only queries. Prohibited keywords like CREATE, MERGE, DELETE, SET, etc., are not allowed."
-            }
+    # Use the sanitized query
+    cypher_query = result_or_error
 
     try:
         debug_log(f"Executing Cypher query: {cypher_query}")
         with db_manager.get_driver().session() as session:
-            result = session.run(cypher_query)
+            # Use parameterized query if params provided
+            if validated_params:
+                result = session.run(cypher_query, validated_params)
+            else:
+                result = session.run(cypher_query)
             # Convert results to a list of dictionaries for clean JSON serialization.
             records = [record.data() for record in result]
             

@@ -4,25 +4,38 @@ import asyncio
 import os
 from ...utils.debug_log import debug_log
 from ..package_resolver import get_local_package_path
+from ...security import validate_path, is_path_allowed
 
 def add_code_to_graph(graph_builder, job_manager, loop, list_repos_func, **args) -> Dict[str, Any]:
     """
     Tool implementation to index a directory of code.
     Runs indexing asynchronously via a background job.
+    
+    Security: Path is validated to prevent traversal attacks and indexing
+    of sensitive files (credentials, SSH keys, etc.).
     """
     path = args.get("path")
     is_dependency = args.get("is_dependency", False)
     
+    # Security: validate path before processing
+    path_obj, validation_error = validate_path(path)
+    
+    if validation_error:
+        debug_log(f"Path validation failed: {validation_error}")
+        return {
+            "success": False,
+            "error": validation_error,
+            "path": path
+        }
+
+    if not path_obj.exists():
+        return {
+            "success": True,
+            "status": "path_not_found",
+            "message": f"Path '{path}' does not exist."
+        }
+
     try:
-        path_obj = Path(path).resolve()
-
-        if not path_obj.exists():
-            return {
-                "success": True,
-                "status": "path_not_found",
-                "message": f"Path '{path}' does not exist."
-            }
-
         # Prevent re-indexing the same repository.
         indexed_repos = list_repos_func().get("repositories", [])
         for repo in indexed_repos:
@@ -59,7 +72,10 @@ def add_code_to_graph(graph_builder, job_manager, loop, list_repos_func, **args)
         return {"error": f"Failed to start background processing: {str(e)}"}
 
 def add_package_to_graph(graph_builder, job_manager, loop, list_repos_func, **args) -> Dict[str, Any]:
-    """Tool to add a package to the graph by auto-discovering its location"""
+    """Tool to add a package to the graph by auto-discovering its location
+    
+    Security: Package path is validated to prevent indexing sensitive files.
+    """
     package_name = args.get("package_name")
     language = args.get("language")
     is_dependency = args.get("is_dependency", True)
@@ -82,10 +98,13 @@ def add_package_to_graph(graph_builder, job_manager, loop, list_repos_func, **ar
         if not package_path:
             return {"error": f"Could not find package '{package_name}' for language '{language}'. Make sure it's installed."}
         
+        # Security: validate package path
+        path_obj, validation_error = validate_path(package_path)
+        if validation_error:
+            return {"error": f"Package path validation failed: {validation_error}"}
+        
         if not os.path.exists(package_path):
             return {"error": f"Package path '{package_path}' does not exist"}
-        
-        path_obj = Path(package_path)
         
         total_files, estimated_time = graph_builder.estimate_processing_time(path_obj)
         
