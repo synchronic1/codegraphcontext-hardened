@@ -29,16 +29,32 @@ def _is_kuzudb_available() -> bool:
         return False
 
 def _is_falkordb_available() -> bool:
-    """Check if FalkorDB Lite is installed (Unix only)."""
+    """Check if FalkorDB Lite is installed and can run (Unix only).
+    
+    Returns False if:
+    - On Windows
+    - Python < 3.12
+    - redislite not installed
+    - redis-server binary not found (required for FalkorDB Lite)
+    """
     if platform.system() == "Windows":
         return False
 
     import sys
     if sys.version_info < (3, 12):
         return False
+    
     try:
         import redislite
-        return hasattr(redislite, 'falkordb_client')
+        if not hasattr(redislite, 'falkordb_client'):
+            return False
+        
+        # Check if redis-server is available (required for FalkorDB Lite)
+        import shutil
+        if not shutil.which('redis-server'):
+            return False
+        
+        return True
     except ImportError:
         return False
 
