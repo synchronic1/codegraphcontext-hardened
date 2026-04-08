@@ -65,7 +65,6 @@ BLOCKED_PATTERNS = [
 
 # Default allowed roots (can be overridden via environment)
 # By default, only allow indexing within current working directory
-DEFAULT_ALLOWED_ROOTS_ENV = os.getenv("CGC_ALLOWED_ROOTS", "")
 
 def _get_allowed_roots() -> List[Path]:
     """
@@ -75,9 +74,10 @@ def _get_allowed_roots() -> List[Path]:
     
     If not set, defaults to allowing only the current working directory.
     """
-    if DEFAULT_ALLOWED_ROOTS_ENV:
+    env_roots = os.getenv("CGC_ALLOWED_ROOTS", "")
+    if env_roots:
         roots = []
-        for root_str in DEFAULT_ALLOWED_ROOTS_ENV.split(":"):
+        for root_str in env_roots.split(":"):
             root = Path(root_str).expanduser().resolve()
             if root.exists():
                 roots.append(root)

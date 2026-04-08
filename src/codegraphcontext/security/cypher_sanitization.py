@@ -82,6 +82,12 @@ def _check_prefix(query: str) -> Tuple[bool, Optional[str]]:
         if clean.startswith(prefix.upper()):
             return True, None
     
+    # Also allow CALL with allowed procedures
+    for proc in ALLOWED_PROCEDURES:
+        proc_upper = proc.upper()
+        if clean.startswith(f"CALL {proc_upper}"):
+            return True, None
+    
     return False, (
         f"Query must start with a read-only clause: "
         f"{', '.join(ALLOWED_QUERY_PREFIXES[:4])}"
@@ -97,11 +103,20 @@ def _check_forbidden_keywords(query: str) -> Tuple[bool, Optional[str]]:
     """
     normalized = _normalize_query(query)
     
+    # Check CALL patterns first (more specific)
     for keyword in FORBIDDEN_KEYWORDS:
-        # Use word boundary matching
-        pattern = r'\b' + re.escape(keyword) + r'\b'
-        if re.search(pattern, normalized, re.IGNORECASE):
-            return False, f"Forbidden keyword in query: '{keyword}'"
+        if keyword.startswith("CALL "):
+            # For CALL patterns, check the full pattern
+            if keyword.lower() in normalized.lower():
+                return False, f"Forbidden keyword in query: '{keyword}'"
+    
+    # Then check other keywords with word boundaries
+    for keyword in FORBIDDEN_KEYWORDS:
+        if not keyword.startswith("CALL "):
+            # Use word boundary matching
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            if re.search(pattern, normalized, re.IGNORECASE):
+                return False, f"Forbidden keyword in query: '{keyword}'"
     
     return True, None
 
@@ -169,13 +184,13 @@ def sanitize_cypher_query(
     # Normalize whitespace
     query = query.strip()
     
-    # Check prefix
-    is_valid, error = _check_prefix(query)
-    if not is_valid:
+    # Check forbidden keywords FIRST (better error messages)
+    is_safe, error = _check_forbidden_keywords(query)
+    if not is_safe:
         return False, error, None
     
-    # Check forbidden keywords
-    is_safe, error = _check_forbidden_keywords(query)
+    # Check prefix
+    is_valid, error = _check_prefix(query)
     if not is_safe:
         return False, error, None
     
